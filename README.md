@@ -54,71 +54,118 @@ Selected leptons are sorted by pT (descending) before building candidates.
 
 > Line numbers refer to `HiggsDemoAnalyzerGit.cc` in the `main` branch.
 
-### 0) High-level purpose & strategy
-- **Header + analysis strategy description:** lines **1–~90**
-  - Explains this is a simplified research-level H→ZZ→4ℓ example.
-  - Notes the recommended dataset split to avoid trigger overlap: DoubleMu for 4μ and 2μ2e, DoubleElectron for 4e.
+### 0) High-level purpose & strategy (lines 1–69)
 
-### 1) Module / class structure
-- **Class declaration (histograms + variables):** lines **~120–~350**
-  - Declares all `TH1D/TH2D` histograms used for control plots and final spectra.
-- **Constructor (histogram booking):** lines **360–880**
-  - `HiggsDemoAnalyzerGit::HiggsDemoAnalyzerGit(...)` books all histograms using `TFileService`.
+- **Header: what this code is**
+  - States that this is a **research-level H → ZZ → 4ℓ** example, built on the CMS Open Data DEMO setup.
+  - Emphasises this is a **strongly simplified reimplementation** of parts of the original CMS 4ℓ analysis (not the official CMS analysis code).
+  - The target is to **approximately reproduce** the published Higgs→4ℓ mass spectrum from **CMS-HIG-12-028** (Phys. Lett. B716 (2012) 30–61, arXiv:1207.7235), with the reference spectrum plot linked.
 
-### 2) Event loop entry point
-- **Main event analysis function:** lines **892–2276**
-  - `void HiggsDemoAnalyzerGit::analyze(...)` contains all selection + reconstruction logic.
+- **Scope & limitations**
+  - Clarifies that other Higgs channels (e.g. **H → γγ**) are **not included**.
+  - Notes that advanced features are intentionally omitted for simplicity:
+    - no extra corrections beyond those implicit in the reconstructed objects,
+    - no systematic uncertainties,
+    - simplified selection compared to the full CMS analysis.
+  - Explains why agreement with the published spectrum is only **qualitative / approximate**:
+    - partial dataset overlap,
+    - legacy software/calibrations differ from those used in the original paper.
 
-### 3) AOD collections read-in (handles)
-- **Load event content (`getByLabel`):** lines **920–1060**
-  - Reads: `generalTracks`, `globalMuons`, `muons`, `offlineBeamSpot`, `offlinePrimaryVertices`, `gsfElectrons`.
-  - Sets PV/beamspot, initializes vectors and physics variables.
+- **Outputs**
+  - Mentions the output ROOT file contains:
+    - the main histograms (and many auxiliary / control histograms),
+    - an **ntuple** with candidate four-vectors for educational use.
 
-### 4) Global muon "demo" selection (not central to H→4ℓ)
-- **Global muon loop + quality cuts:** lines **1064–1117**
-  - Fills control hists for global muons and builds `vIdPt` (sorted by pT).
+- **Analysis strategy: dataset split to avoid double counting**
+  - Recommends a dataset split to avoid **trigger overlap** (double counting):
+    - use **DoubleMu** for **4μ** and **2μ2e** final states,
+    - use **DoubleElectron** for **4e** final state.
+  - Important note: the analyzer code is **agnostic** to which dataset you run on; you must select the appropriate histograms later in the **ROOT post-processing** step.
 
-### 5) PF muon selection (core for H→4ℓ)
-- **Reco/PF muon selection:** lines **1122–1206**
-  - Applies PF muon requirements, computes PF relative isolation (R04), SIP3D, dxy/dz, then stores passing muons in `vIdPtmu`.
-  - Sorts selected muons by pT.
+### 1) Includes & dependencies (lines 70–124)
 
-### 6) Electron selection (core for H→4ℓ)
-- **Electron selection:** lines **1211–1285**
-  - Applies PF preselection, missing hits, SIP3D, dxy/dz, PF isolation, pT and |η_SC| cuts.
-  - Stores passing electrons in `vIdPte`, then sorts by pT.
+- **System / C++ standard headers**
+  - Includes core C++ utilities used throughout the analyzer:
+    - memory management (`<memory>`), containers (`<vector>`), algorithms (`<algorithm>`), and helper types (`<utility>`).
 
-### 7) Object counts (after selection)
-- **Counts of good objects:** lines **1287–1330**
-  - Defines `nGoodGlobalMuon`, `nGoodRecoMuon`, `nGoodElectron` and fills `h_nggmu`, `h_ngmu`, `h_nge`.
+- **CMSSW framework headers (EDAnalyzer skeleton)**
+  - Imports the CMSSW framework interfaces required to define and run an `edm::EDAnalyzer`:
+    - module base classes and event access (`EDAnalyzer`, `Event`, `Frameworkfwd`)
+    - configuration via python `.cfg` (`ParameterSet`)
+    - module registration (`MakerMacros`).
 
-### 8) Z control regions
-- **Dimuon using Global Muons (demo):** lines **~1331–~1331** (immediately before Z→μμ block)
-- **Z→μμ using selected reco/PF muons:** lines **1332–1357**
-  - Fills `h_mZ_2mu`.
-- **Z→ee using selected electrons:** lines **1360–1385**
-  - Fills `h_mZ_2e`.
+- **Extra CMSSW services / utilities**
+  - Adds optional but commonly used framework utilities:
+    - access to `EventSetup` and conditions data (`EventSetup`, `ESHandle`)
+    - logging (`MessageLogger`)
+    - ROOT output handling via `TFileService` (standard CMSSW way to write histograms/trees)
+    - `edm::Ref` for referencing EDM objects inside collections.
+   
+### 2) Analyzer class interface (lines 126–137)
 
-### 9) 4μ channel: Z pairing → Za/Zb → 4ℓ candidate → histograms
-- **ZZ/ZZ* → 4μ reconstruction:** lines **1388–1736**
-  - Builds 3 OS pairing combinations: (12,34), (13,24), (14,23).
-  - Chooses best pairing using |mZij − mZ| (Za is closest to mZ).
-  - Applies pT requirement on Za leptons (20 GeV and 10 GeV), mass windows (mZa, mZb).
-  - Builds `p4H = p4Za + p4Zb`, fills `m4μ` histograms if `m4ℓ > 70`.
+- **EDAnalyzer module declaration**
+  - Declares the analysis module `HiggsDemoAnalyzerGit` as a subclass of **`edm::EDAnalyzer`** (standard CMSSW analyzer plugin).
 
-### 10) 4e channel: analogous to 4μ
-- **ZZ/ZZ* → 4e reconstruction:** lines **1738–2080**
-  - Same pairing logic, Za/Zb choice, mass windows, `m4e` spectra.
+- **Constructor / destructor**
+  - `HiggsDemoAnalyzerGit(const edm::ParameterSet&)`: reads configuration parameters from the CMSSW python `.cfg` file.
+  - `~HiggsDemoAnalyzerGit()`: handles cleanup when the job finishes.
 
-### 11) 2μ2e channel
-- **ZZ/ZZ* → 2μ2e reconstruction:** lines **2083–2272**
-  - Builds Zμ and Ze, chooses Za as the one closer to mZ, applies pT + mass window cuts.
-  - Builds `m2μ2e` spectra and fills isolation/kinematics “after cuts” control plots.
+- **CMSSW lifecycle methods**
+  - `beginJob()`: called once at job start (typically used to **book ROOT histograms / trees** via `TFileService`).
+  - `analyze(const edm::Event&, const edm::EventSetup&)`: called **once per event** (core analysis: object selection, Z/4ℓ reconstruction, apply cuts, fill histograms).
+  - `endJob()`: called once at job end (final summaries / closing steps if needed).
 
-### 12) Optional ntuples (currently commented out)
-- **beginJob() ntuple branches (commented):** lines **2279–~2460**
-  - `TTree` branches for 4μ / 4e / 2μ2e candidates are present but commented out.
+- **Good-lumisection filter helper**
+  - `providesGoodLumisection(const edm::Event&)`: helper function used to apply **good-run / good-lumi** quality selection (removes known-bad data-taking intervals).
 
-### 13) End of module
-- **Plugin definition:** line **2467**
-  - `DEFINE_FWK_MODULE(HiggsDemoAnalyzerGit);`
+### 3) ROOT outputs: histograms for physics spectra + control plots (lines 138–266)
+
+- **ROOT objects declared**
+  - Declares the ROOT outputs written to the job output file:
+    - optional `TTree` (currently commented out),
+    - many `TH1D` and a `TH2D` for event/control distributions and reconstructed masses.
+
+- **Object counting / preselection bookkeeping**
+  - Multiplicity and “good object” counters used to sanity-check selections:
+    - muons/electrons sizes and counts (e.g. `h_globalmu_size`, `h_recomu_size`, `h_e_size`, `h_ngmu`, `h_nge`, …)
+    - intermediate mass distributions for early muon filtering (`h_m1_gmu`, `h_m2_gmu`, `h_m3_gmu`).
+
+- **Z-candidate mass histograms (baseline 2ℓ)**
+  - Reconstructed Z→2ℓ masses used to validate lepton selection and Z building:
+    - `h_mZ_2mu` (Z→μ+μ−), `h_mZ_2e` (Z→e+e−).
+
+- **Final-state specific mass bookkeeping**
+  - **4μ channel:** stores all possible opposite-sign pairing combinations and the chosen Z candidates:
+    - pairing masses (`h_mZ12_4mu`, `h_mZ34_4mu`, `h_mZ13_4mu`, `h_mZ24_4mu`, `h_mZ14_4mu`, `h_mZ23_4mu`)
+    - chosen Z candidates (`h_mZa_4mu`, `h_mZb_4mu`)
+    - per-lepton mass / candidate-level bookkeeping (`h_m1_m4mu … h_m4_m4mu`)
+  - **4e channel:** same structure as 4μ:
+    - pairing masses (`h_mZ12_4e`, `h_mZ34_4e`, …)
+    - chosen Z candidates (`h_mZa_4e`, `h_mZb_4e`)
+    - bookkeeping (`h_m1_m4e … h_m4_m4e`)
+  - **2μ2e channel:** stores the Z built from muons and the Z built from electrons, plus the chosen Z ordering:
+    - `h_mZmu_2mu2e`, `h_mZe_2mu2e`, `h_mZa_2mu2e`, `h_mZb_2mu2e`
+    - bookkeeping (`h_m1_m2mu2e … h_m4_m2mu2e`)
+
+- **Control plots (selection diagnostics)**
+  - **Global muon quality (before/after cuts):**
+    - kinematics and fit quality (`h_p_gmu`, `h_pt_gmu_b4`, `h_eta_gmu_b4`, `h_phi_gmu`, `h_chi2_gmu`, `h_ndof_gmu`, `h_normchi2_gmu`)
+    - tracking hits (`h_validhits_gmu`, `h_pixelhits_gmu`)
+    - after-selection kinematics (`h_pt_gmu_after`, `h_eta_gmu_after`)
+  - **Tracker muon quality:**
+    - `h_p_reco`, `h_pt_reco_b4`, `h_eta_reco_b4`, `h_phi_reco`, `h_chi2_reco`, `h_ndof_reco`, `h_normchi2_reco`
+  - **PF muon isolation / impact parameters:**
+    - hit quality & displacement (`h_goodhit`, `h_dxy_mu`)
+    - PF relative isolation before/after (`h_relPFIso_mu`, `h_relPFIso_mu_after`)
+    - after-selection kinematics (inclusive + per-channel) (`h_pt_after`, `h_eta_after`, `h_pt_after_Zto2mu`, `h_eta_after_Zto2mu`, `h_pt_after_2mu2e`, `h_eta_after_2mu2e`)
+  - **Electron ID / isolation diagnostics:**
+    - kinematics (`h_p_e`, `h_et_e`, `h_pt_e_b4`, `h_eta_e_b4`, `h_phi_e`)
+    - supercluster info (`h_sc_eta`, `h_sc_rawE`)
+    - PF relative isolation before/after (`h_relPFIso_e`, `h_relPFIso_e_after`)
+    - isolation vs pT (`h_relPFIso_pt_e` as `TH2D`)
+    - displacement (`h_dxy_e`)
+    - after-selection kinematics (Z→ee, inclusive, 2μ2e) (`h_pt_e_after_Zto2e`, `h_eta_e_after_Zto2e`, `h_pt_e_after`, `h_eta_e_after`, `h_pt_e_after_2mu2e`, `h_eta_e_after_2mu2e`)
+  - **Final control variables used in lepton quality cuts**
+    - per-channel isolation summaries (`h_relPFIso_2mu_after`, `h_relPFIso_2e_after`)
+    - impact parameter significance and missing hits (`h_SIP3d_mu_b4`, `h_SIP3d_e_b4`, `h_misshite`)
+
