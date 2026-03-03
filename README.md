@@ -49,3 +49,76 @@ The analyzer builds a pool of **selected muons** and **selected electrons**, the
 - Relative PF isolation: relPFIso < 0.4
 
 Selected leptons are sorted by pT (descending) before building candidates.
+
+## Code map with line references (HiggsDemoAnalyzerGit.cc)
+
+> Line numbers refer to `HiggsDemoAnalyzerGit.cc` in the `main` branch.
+
+### 0) High-level purpose & strategy
+- **Header + analysis strategy description:** lines **1–~90**
+  - Explains this is a simplified research-level H→ZZ→4ℓ example.
+  - Notes the recommended dataset split to avoid trigger overlap: DoubleMu for 4μ and 2μ2e, DoubleElectron for 4e.
+
+### 1) Module / class structure
+- **Class declaration (histograms + variables):** lines **~120–~350**
+  - Declares all `TH1D/TH2D` histograms used for control plots and final spectra.
+- **Constructor (histogram booking):** lines **360–880**
+  - `HiggsDemoAnalyzerGit::HiggsDemoAnalyzerGit(...)` books all histograms using `TFileService`.
+
+### 2) Event loop entry point
+- **Main event analysis function:** lines **892–2276**
+  - `void HiggsDemoAnalyzerGit::analyze(...)` contains all selection + reconstruction logic.
+
+### 3) AOD collections read-in (handles)
+- **Load event content (`getByLabel`):** lines **920–1060**
+  - Reads: `generalTracks`, `globalMuons`, `muons`, `offlineBeamSpot`, `offlinePrimaryVertices`, `gsfElectrons`.
+  - Sets PV/beamspot, initializes vectors and physics variables.
+
+### 4) Global muon "demo" selection (not central to H→4ℓ)
+- **Global muon loop + quality cuts:** lines **1064–1117**
+  - Fills control hists for global muons and builds `vIdPt` (sorted by pT).
+
+### 5) PF muon selection (core for H→4ℓ)
+- **Reco/PF muon selection:** lines **1122–1206**
+  - Applies PF muon requirements, computes PF relative isolation (R04), SIP3D, dxy/dz, then stores passing muons in `vIdPtmu`.
+  - Sorts selected muons by pT.
+
+### 6) Electron selection (core for H→4ℓ)
+- **Electron selection:** lines **1211–1285**
+  - Applies PF preselection, missing hits, SIP3D, dxy/dz, PF isolation, pT and |η_SC| cuts.
+  - Stores passing electrons in `vIdPte`, then sorts by pT.
+
+### 7) Object counts (after selection)
+- **Counts of good objects:** lines **1287–1330**
+  - Defines `nGoodGlobalMuon`, `nGoodRecoMuon`, `nGoodElectron` and fills `h_nggmu`, `h_ngmu`, `h_nge`.
+
+### 8) Z control regions
+- **Dimuon using Global Muons (demo):** lines **~1331–~1331** (immediately before Z→μμ block)
+- **Z→μμ using selected reco/PF muons:** lines **1332–1357**
+  - Fills `h_mZ_2mu`.
+- **Z→ee using selected electrons:** lines **1360–1385**
+  - Fills `h_mZ_2e`.
+
+### 9) 4μ channel: Z pairing → Za/Zb → 4ℓ candidate → histograms
+- **ZZ/ZZ* → 4μ reconstruction:** lines **1388–1736**
+  - Builds 3 OS pairing combinations: (12,34), (13,24), (14,23).
+  - Chooses best pairing using |mZij − mZ| (Za is closest to mZ).
+  - Applies pT requirement on Za leptons (20 GeV and 10 GeV), mass windows (mZa, mZb).
+  - Builds `p4H = p4Za + p4Zb`, fills `m4μ` histograms if `m4ℓ > 70`.
+
+### 10) 4e channel: analogous to 4μ
+- **ZZ/ZZ* → 4e reconstruction:** lines **1738–2080**
+  - Same pairing logic, Za/Zb choice, mass windows, `m4e` spectra.
+
+### 11) 2μ2e channel
+- **ZZ/ZZ* → 2μ2e reconstruction:** lines **2083–2272**
+  - Builds Zμ and Ze, chooses Za as the one closer to mZ, applies pT + mass window cuts.
+  - Builds `m2μ2e` spectra and fills isolation/kinematics “after cuts” control plots.
+
+### 12) Optional ntuples (currently commented out)
+- **beginJob() ntuple branches (commented):** lines **2279–~2460**
+  - `TTree` branches for 4μ / 4e / 2μ2e candidates are present but commented out.
+
+### 13) End of module
+- **Plugin definition:** line **2467**
+  - `DEFINE_FWK_MODULE(HiggsDemoAnalyzerGit);`
