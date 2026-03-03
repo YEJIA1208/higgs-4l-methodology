@@ -168,4 +168,195 @@ Selected leptons are sorted by pT (descending) before building candidates.
   - **Final control variables used in lepton quality cuts**
     - per-channel isolation summaries (`h_relPFIso_2mu_after`, `h_relPFIso_2e_after`)
     - impact parameter significance and missing hits (`h_SIP3d_mu_b4`, `h_SIP3d_e_b4`, `h_misshite`)
+    
+### 4) Member variables: per-event bookkeeping & reconstructed kinematics (lines 267–359)
 
+- **Counters (selected objects)**
+  - Tracks how many leptons pass the selection in each category:
+    - `nGoodGlobalMuon`, `nGoodRecoMuon` (muons)
+    - `nGoodElectron` (electrons)
+
+- **Generic helper scalars**
+  - Temporary scalars used in intermediate calculations / sorting:
+    - `s1…s4, s`, and displacement / kinematics helpers (`dx, dy, dz, rap, pz`)
+
+- **Z-candidate masses & pairing bookkeeping**
+  - Stores invariant masses for all relevant opposite-sign lepton pairings:
+    - `mZ12, mZ34, mZ13, mZ24, mZ14, mZ23`
+  - Stores the chosen Z candidates after applying pairing logic:
+    - `mZa, mZb` (typically Z1 = “best Z” and Z2 = the other pair)
+
+- **4μ channel reconstructed quantities**
+  - 4-lepton candidate observables:
+    - `mass4mu, pt_4mu, eta_4mu, phi_4mu` and components `px4mu, py4mu, pz4mu, E4mu`
+  - Per-muon kinematics and charge bookkeeping:
+    - `pt_mu1…pt_mu4`, `eta_mu1…eta_mu4`, `phi_mu1…phi_mu4`
+    - `cas_mu1…cas_mu4` (charge sign / charge category flags)
+    - momentum components `px_mu*`, `py_mu*`, `pz_mu*` and energies `E_mu*`
+
+- **Z-candidate 4-vector components (muon/electron-independent representation)**
+  - Stores energies, momenta, and derived kinematics for each Z pairing:
+    - energies `eZ12…eZ23`
+    - components `pxZ12…`, `pyZ12…`, `pzZ12…`
+    - magnitudes `pZ12…` and transverse momenta `pTZ12…`
+  - Additional displacement-like quantities:
+    - `dZ12…dZ23` and helper distances `dZc1…dZc3`
+  - Chosen Z candidates’ components:
+    - `eZa, pxZa, pyZa, pzZa, pTZa` and `eZb, pxZb, pyZb, pzZb, pTZb`
+
+- **Electron selection / quality bookkeeping**
+  - Electron counters and quality-related variables:
+    - `sqme`, `misshits` (e.g. missing hits used in electron ID)
+
+- **4e channel reconstructed quantities**
+  - 4-lepton candidate observables:
+    - `mass4e, pt_4e, eta_4e, phi_4e` and components `px4e, py4e, pz4e, E4e`
+  - Per-electron kinematics and charge bookkeeping:
+    - `pt_e1…pt_e4`, `eta_e1…eta_e4`, `phi_e1…phi_e4`
+    - `cas_e1…cas_e4`
+    - components `px_e*`, `py_e*`, `pz_e*` and energies `E_e*`
+
+- **2μ2e channel reconstructed quantities**
+  - Mixed final state candidate observables:
+    - `mass2mu2e, pt_2mu2e, eta_2mu2e, phi_2mu2e` and components `px2mu2e, py2mu2e, pz2mu2e, E2mu2e`
+  - Per-lepton kinematics for the mixed channel:
+    - muons: `pt_2mu1, pt_2mu2`, `eta_2mu1, eta_2mu2`, `phi_2mu1, phi_2mu2`, `cas_2mu1, cas_2mu2`
+    - electrons: `pt_2e1, pt_2e2`, `eta_2e1, eta_2e2`, `phi_2e1, phi_2e2`, `cas_2e1, cas_2e2`
+    - components `px_*`, `py_*`, `pz_*` and energies `E_*`
+
+- **Isolation & impact-parameter variables (used in lepton ID cuts)**
+  - Shared selection variables:
+    - `goodhit`, `relPFIso_mu`, `relPFIso_e`
+  - 3D impact parameter and its significance:
+    - muons: `IP3d_mu`, `ErrIP3d_mu`, `SIP3d_mu`
+    - electrons: `IP3d_e`, `ErrIP3d_e`, `SIP3d_e`
+
+- **Run/event/lumi bookkeeping**
+  - Stores identifiers for data quality filtering and debugging:
+    - `nRun, nEvt, nLumi`
+
+- **Final reconstructed 4-vectors**
+  - Lorentz vectors for the chosen Z candidates and Higgs candidate:
+    - `TLorentzVector p4Za, p4Zb, p4H`
+### 5) Constructor: analysis entry point & ROOT output service setup (lines 360–375)
+
+- **Constructor begins (`HiggsDemoAnalyzerGit::HiggsDemoAnalyzerGit(const edm::ParameterSet& iConfig)`)**
+  - Marks the start of the analyzer initialisation phase.
+
+- **High-level intent (header comment)**
+  - States this module’s goal: **approximately reproduce** the Higgs→4ℓ mass spectrum from **CMS-HIG-12-028**.
+
+- **ROOT output service initialisation**
+  - Creates/uses the CMSSW `TFileService`:
+    - `edm::Service<TFileService> fs;`
+  - This service is the standard CMSSW mechanism to write ROOT histograms/trees into the output ROOT file.
+
+- **Histogram booking section starts**
+  - Begins the “book histograms and set axis labels” block:
+    - this section is executed **once during module initialisation** (i.e. not per-event),
+    - histogram objects declared earlier (`TH1D*`, `TH2D*`) will be created via `fs->make<TH1D>(...)` and configured with titles/axis labels.
+    
+### 6) Histogram booking: event counts + Z/4ℓ mass spectra (lines 376–602)
+
+- **Histogram booking pattern (one-time initialisation)**
+  - Uses `fs->make<TH1D>(name, title, nbins, xmin, xmax)` to create each histogram once.
+  - Immediately assigns axis labels via `GetXaxis()->SetTitle(...)` and `GetYaxis()->SetTitle(...)`.
+
+- **Basic event/object multiplicities**
+  - Books histograms to monitor collection sizes and selected-object counts:
+    - Global muons: `NGMuons` → `h_globalmu_size`
+    - Reco muons: `NMuons` → `h_recomu_size`
+    - Electrons: `Nelectrons` → `h_e_size`
+    - “Good” object counts after quality cuts:
+      - `NGoodGMuons` (`h_nggmu`), `NGoodRecMuons` (`h_ngmu`), `NGoodElectron` (`h_nge`)
+
+- **Dimuon mass sanity-check spectra (Global Muons)**
+  - Books three dimuon invariant-mass distributions with increasing range:
+    - `GMmass` (0–4 GeV): low-mass resonances (ρ/ω, ϕ, J/ψ region)
+    - `GMmass_extended` (0–120 GeV): includes Υ and the Z peak
+    - `GMmass_extended_600` (0–600 GeV): wide range to spot high-mass tails/outliers
+
+- **Baseline Z→2ℓ validation histograms**
+  - Books Z candidate mass spectra used to validate lepton selection:
+    - `massZto2muon` (`h_mZ_2mu`, 40–120 GeV)
+    - `massZto2e` (`h_mZ_2e`, 40–120 GeV)
+
+- **4μ reconstruction: pairing combinations + chosen Z candidates + 4μ mass**
+  - Books masses for the three OS-pairing combinations in 4μ:
+    - combination **1234**: `mZ12_4mu`, `mZ34_4mu`
+    - combination **1324**: `mZ13_4mu`, `mZ24_4mu`
+    - combination **1423**: `mZ14_4mu`, `mZ23_4mu`
+  - Books the selected Z candidates (based on “closest to mZ” logic):
+    - `mZa_4mu` (Z closest to nominal Z mass), `mZb_4mu` (the other Z)
+  - Books 4μ invariant-mass spectra in multiple ranges / binnings:
+    - `mass4mu_7TeV` (98–608 GeV)
+    - `mass4mu_8TeV` (70–810 GeV)
+    - `mass4mu_8TeV_low` (70–181 GeV)
+    - `mass4mu_full` (0–900 GeV)
+
+- **4e reconstruction: pairing combinations + chosen Z candidates + 4e mass**
+  - Same structure as 4μ, but for dielectron pairs:
+    - pairings: `mZ12_4e`, `mZ34_4e`, `mZ13_4e`, `mZ24_4e`, `mZ14_4e`, `mZ23_4e`
+    - chosen Zs: `mZa_4e`, `mZb_4e`
+    - 4e mass spectra: `mass4e_7TeV`, `mass4e_8TeV`, `mass4e_8TeV_low`, `mass4e_full`
+
+- **2μ2e reconstruction: Z(μμ) + Z(ee) + chosen Z ordering + 2μ2e mass**
+  - Books separate Z masses built from the muon pair and electron pair:
+    - `massZmu_2mu2e` (`h_mZmu_2mu2e`), `massZe_2mu2e` (`h_mZe_2mu2e`)
+  - Books “chosen Z” ordering for the mixed final state:
+    - `mZa_2mu2e` (Z closest to nominal Z mass), `mZb_2mu2e` (the other Z)
+  - Books 2μ2e invariant-mass spectra (multiple ranges / binnings):
+    - `mass2mu2e_7TeV`, `mass2mu2e_8TeV`, `mass2mu2e_8TeV_low`, `mass2mu2e_full`
+
+### 7) Histogram booking: control plots for lepton ID/quality (lines 605–880)
+
+- **Control plots section**
+  - Books diagnostic histograms (“control plots”) used to validate lepton reconstruction and selection cuts.
+  - These plots are not the final Higgs mass spectra; they are for checking **kinematics, track quality, isolation, and impact parameters** before/after cuts.
+
+- **Global Muon (GM) control plots**
+  - Books kinematics and track-fit quality for **global muons**:
+    - momentum and kinematics: `GM_momentum`, `b4_GM_pT`, `b4_GM_eta`, `GM_phi`
+    - fit quality: `GM_chi2`, `GM_ndof`, `GM_normchi2`
+    - hit information: `GM_validhits`, `GM_pixelhits`
+  - Books “after cuts” distributions to show the effect of the selection:
+    - `after_GM_pT`, `after_GM_eta`
+
+- **Reco Muon (RM) / PF-muon related control plots**
+  - Books kinematics and quality metrics for **reco muons**:
+    - momentum and kinematics: `RM_momentum`, `b4_RM_pt`, `b4_RM_eta`, `RM_phi`
+    - fit quality: `RM_chi2`, `RM_Ndof`, `RM_NormChi2`
+  - Books tracking / muon-system quality and displacement:
+    - muon chamber hits: `RM_goodMuonChamberHit`
+    - transverse impact parameter: `RM_dxy`
+    - hit counters: `RM_validhits`, `RM_pixelhits`
+  - Books PF relative isolation **before/after** muon isolation cuts:
+    - `RM_RelPFIso`, `after_RM_RelPFIso`
+  - Books “after cuts” kinematics for different selection contexts:
+    - after Z→μμ selection: `after_RM_pt_Z2mu`, `after_RM_eta_Z2mu`
+    - after general muon selection: `after_RM_pt`, `after_RM_eta`
+    - after 2μ2e channel selection: `after_pt_2mu2e`, `after_eta_2mu2e`
+  - Books channel-specific isolation checks for the 2μ2e selection:
+    - muon isolation after cuts: `after_relPFIso_2mu`
+    - electron isolation after cuts: `after_relPFIso_2e`
+
+- **Electron control plots**
+  - Books kinematics and ECAL supercluster information:
+    - momentum and kinematics: `e_momentum`, `e_eT`, `b4_e_pT`, `b4_e_eta`, `e_phi`
+    - supercluster variables: `e_SC_eta`, `e_SC_rawE`
+  - Books PF relative isolation **before/after** electron isolation cuts:
+    - `e_RelPFIso`, `after_e_RelPFIso`
+  - Books a 2D diagnostic histogram to study isolation vs pT:
+    - `e_RelPFIso_pT` (uses custom bin edges in isolation)
+  - Books transverse impact parameter distribution:
+    - `e_dxy`
+  - Books “after cuts” electron kinematics for different contexts:
+    - after Z→ee selection: `after_e_pT_Zto2e`, `after_e_eta_Zto2e`
+    - after general electron selection: `after_e_pT`, `after_e_eta`
+    - after 2μ2e channel selection: `after_e_pT_2mu2e`, `after_e_eta_2mu2e`
+
+- **Impact parameter significance & electron missing hits**
+  - Books SIP3D (3D impact parameter significance) for muons and electrons:
+    - `SIP3d_mu`, `SIP3d_e`
+  - Books electron track missing hits histogram (used in electron ID quality):
+    - `e_misshit`
